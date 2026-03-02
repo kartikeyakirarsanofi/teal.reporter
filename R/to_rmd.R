@@ -38,7 +38,7 @@
   chrome_available <- any(nzchar(Sys.which(c("google-chrome", "chromium-browser", "chromium", "chrome"))))
 
   tmp_html <- tempfile(fileext = ".html")
-  tmp_png <- tempfile(fileext = ".png")
+  tmp_png <- tempfile(tmpdir = getwd(), fileext = ".png")
   htmlwidgets::saveWidget(widget = widget, file = tmp_html, selfcontained = TRUE)
 
   backend <- tolower(backend)
@@ -110,6 +110,16 @@
     )
   }
 
+  if (!file.exists(tmp_png)) {
+    stop(
+      paste0(
+        "htmlwidget capture did not produce an image file. ",
+        "Ensure the selected backend is installed and configured. ",
+        "For webshot, run webshot::install_phantomjs()."
+      )
+    )
+  }
+
   tmp_png
 }
 
@@ -136,6 +146,7 @@
       "  height = %d,\n",
       "  backend = %s\n",
       ")\n",
+      ".__widget_png <- normalizePath(.__widget_png, winslash = '/', mustWork = TRUE)\n",
       "knitr::include_graphics(.__widget_png)\n",
       "```"
     ),
