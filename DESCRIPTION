@@ -64,6 +64,7 @@ Suggests:
     testthat (>= 3.2.2),
     tinytex,
     waldo (>= 0.2.0),
+    webshot,
     webshot2,
     withr (>= 2.0.0)
 VignetteBuilder:

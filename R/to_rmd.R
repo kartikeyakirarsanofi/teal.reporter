@@ -25,7 +25,7 @@
   )
 }
 
-.capture_htmlwidget_png <- function(widget, width, height, backend = getOption("teal.reporter.widget_capture_backend", "auto")) {
+.capture_htmlwidget_png <- function(widget, width, height, backend = getOption("teal.reporter.widget_capture_backend", "webshot")) {
   checkmate::assert_class(widget, "htmlwidget")
   checkmate::assert_integerish(width, len = 1, lower = 1)
   checkmate::assert_integerish(height, len = 1, lower = 1)
@@ -35,6 +35,8 @@
     stop("Package 'htmlwidgets' is required to capture htmlwidget outputs.")
   }
 
+  chrome_available <- any(nzchar(Sys.which(c("google-chrome", "chromium-browser", "chromium", "chrome"))))
+
   tmp_html <- tempfile(fileext = ".html")
   tmp_png <- tempfile(fileext = ".png")
   htmlwidgets::saveWidget(widget = widget, file = tmp_html, selfcontained = TRUE)
@@ -43,12 +45,17 @@
   width <- as.integer(width)
   height <- as.integer(height)
   available <- c(
+    webshot = requireNamespace("webshot", quietly = TRUE),
     pagedown = requireNamespace("pagedown", quietly = TRUE),
     webshot2 = requireNamespace("webshot2", quietly = TRUE)
   )
 
   selected_backend <- if (backend == "auto") {
-    available_backends <- names(available)[available]
+    available_backends <- c(
+      if (available[["webshot"]]) "webshot",
+      if (chrome_available && available[["pagedown"]]) "pagedown",
+      if (chrome_available && available[["webshot2"]]) "webshot2"
+    )
     if (length(available_backends) > 0) available_backends[[1]] else NA_character_
   } else {
     backend
@@ -58,15 +65,35 @@
     stop(
       paste0(
         "Could not capture htmlwidget for non-HTML output. ",
-        "Install one of: pagedown or webshot2; ",
-        "then set options(teal.reporter.widget_capture_backend = 'pagedown'|'webshot2'|'auto')."
+        "Install and configure one of: webshot (with PhantomJS), pagedown, or webshot2. ",
+        "For systems without Chrome/Chromium, use webshot::install_phantomjs() and set ",
+        "options(teal.reporter.widget_capture_backend = 'webshot')."
+      )
+    )
+  }
+
+  if (selected_backend %in% c("pagedown", "webshot2") && !chrome_available) {
+    stop(
+      paste0(
+        "Backend '", selected_backend, "' requires Chrome/Chromium, but none was found. ",
+        "Use options(teal.reporter.widget_capture_backend = 'webshot') and ensure PhantomJS is installed ",
+        "via webshot::install_phantomjs()."
       )
     )
   }
 
   tmp_url <- paste0("file://", normalizePath(tmp_html, winslash = "/", mustWork = TRUE))
 
-  if (identical(selected_backend, "pagedown")) {
+  if (identical(selected_backend, "webshot")) {
+    webshot::webshot(
+      url = tmp_url,
+      file = tmp_png,
+      vwidth = width,
+      vheight = height,
+      delay = 0.2,
+      zoom = 1
+    )
+  } else if (identical(selected_backend, "pagedown")) {
     pagedown::chrome_print(
       input = tmp_url,
       output = tmp_png,
