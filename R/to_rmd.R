@@ -27,8 +27,8 @@
 
 .capture_htmlwidget_png <- function(widget, width, height, backend = getOption("teal.reporter.widget_capture_backend", "auto")) {
   checkmate::assert_class(widget, "htmlwidget")
-  checkmate::assert_int(width, lower = 1)
-  checkmate::assert_int(height, lower = 1)
+  checkmate::assert_integerish(width, len = 1, lower = 1)
+  checkmate::assert_integerish(height, len = 1, lower = 1)
   checkmate::assert_string(backend)
 
   if (!requireNamespace("htmlwidgets", quietly = TRUE)) {
@@ -40,14 +40,17 @@
   htmlwidgets::saveWidget(widget = widget, file = tmp_html, selfcontained = TRUE)
 
   backend <- tolower(backend)
+  width <- as.integer(width)
+  height <- as.integer(height)
   available <- c(
     pagedown = requireNamespace("pagedown", quietly = TRUE),
     webshot2 = requireNamespace("webshot2", quietly = TRUE),
-    chromote = requireNamespace("webshot2", quietly = TRUE)
+    chromote = requireNamespace("chromote", quietly = TRUE)
   )
 
   selected_backend <- if (backend == "auto") {
-    names(available)[which(available)[1]]
+    available_backends <- names(available)[available]
+    if (length(available_backends) > 0) available_backends[[1]] else NA_character_
   } else {
     backend
   }
@@ -62,21 +65,44 @@
     )
   }
 
+  tmp_url <- paste0("file://", normalizePath(tmp_html, winslash = "/", mustWork = TRUE))
+
   if (identical(selected_backend, "pagedown")) {
     pagedown::chrome_print(
-      input = tmp_html,
+      input = tmp_url,
       output = tmp_png,
       wait = 0.2
     )
-  } else {
+  } else if (identical(selected_backend, "webshot2")) {
     webshot2::webshot(
-      url = tmp_html,
+      url = tmp_url,
       file = tmp_png,
       vwidth = width,
       vheight = height,
       delay = 0.2,
       zoom = 1
     )
+  } else {
+    browser <- chromote::ChromoteSession$new()
+    on.exit(try(browser$close(), silent = TRUE), add = TRUE)
+
+    browser$Page$navigate(url = tmp_url, wait_ = TRUE)
+    browser$Page$loadEventFired(wait_ = TRUE)
+    browser$Emulation$setDeviceMetricsOverride(
+      width = width,
+      height = height,
+      deviceScaleFactor = 1,
+      mobile = FALSE,
+      wait_ = TRUE
+    )
+    browser$Runtime$evaluate("document.body.style.margin = '0';", wait_ = TRUE)
+    screenshot <- browser$Page$captureScreenshot(
+      format = "png",
+      fromSurface = TRUE,
+      clip = list(x = 0, y = 0, width = width, height = height, scale = 1),
+      wait_ = TRUE
+    )
+    writeBin(jsonlite::base64_dec(screenshot$data), tmp_png)
   }
 
   tmp_png
