@@ -22,6 +22,12 @@ testthat::describe("toHTML generates image tags", {
     result <- toHTML(recorded_plot)
     testthat::expect_equal(result$name, "img")
   })
+
+  it("from htmlwidget class", {
+    widget <- structure(list(x = 1), class = "htmlwidget")
+    result <- toHTML(widget)
+    testthat::expect_identical(result, htmltools::browsable(widget))
+  })
 })
 
 testthat::describe("toHTML generates", {
@@ -54,6 +60,14 @@ testthat::describe("toHTML generates", {
     result <- toHTML(structure("1", class = "chunk_output"))
     expected <- toHTML("1")
     testthat::expect_identical(result, expected)
+  })
+
+  it("toHTML preserves shiny tag objects", {
+    tag <- shiny::tags$div("content")
+    tag_list <- shiny::tagList(shiny::tags$span("a"), shiny::tags$span("b"))
+
+    testthat::expect_identical(toHTML(tag), htmltools::browsable(tag))
+    testthat::expect_identical(toHTML(tag_list), htmltools::browsable(tag_list))
   })
 
   it("toHTML generates output from teal_card in teal_report", {

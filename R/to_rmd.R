@@ -221,6 +221,10 @@ to_rmd.default <- function(block, ...) {
 #' @keywords internal
 .to_rmd.datatables <- .content_to_rmd
 
+#' @method .to_rmd htmlwidget
+#' @keywords internal
+.to_rmd.htmlwidget <- .content_to_rmd
+
 #' @method .to_rmd summary.lm
 #' @keywords internal
 .to_rmd.summary.lm <- .content_to_rmd

@@ -82,6 +82,11 @@ testthat::describe("to_rmd generating blocks with rds auxiliary files", {
     testthat::skip_if_not_installed("flextable")
     expect_rds_generation(to_rmd(flextable::flextable(head(iris))))
   })
+
+  it("htmlwidget objects are converted to code chunks with readRDS", {
+    widget <- structure(list(x = 1), class = "htmlwidget")
+    expect_rds_generation(to_rmd(widget))
+  })
 })
 
 testthat::describe("to_rmd declaration", {

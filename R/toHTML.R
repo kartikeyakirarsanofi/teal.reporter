@@ -122,6 +122,24 @@ toHTML.default <- function(x, ...) {
   htmltools::HTML(commonmark::markdown_html(x, extensions = TRUE))
 }
 
+#' @method .toHTML htmlwidget
+#' @keywords internal
+.toHTML.htmlwidget <- function(x, ...) {
+  x
+}
+
+#' @method .toHTML shiny.tag
+#' @keywords internal
+.toHTML.shiny.tag <- function(x, ...) {
+  x
+}
+
+#' @method .toHTML shiny.tag.list
+#' @keywords internal
+.toHTML.shiny.tag.list <- function(x, ...) {
+  x
+}
+
 #' @method .toHTML ContentBlock
 #' @keywords internal
 .toHTML.ContentBlock <- function(x, ...) {
