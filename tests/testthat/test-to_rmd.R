@@ -87,6 +87,15 @@ testthat::describe("to_rmd generating blocks with rds auxiliary files", {
     widget <- structure(list(x = 1), class = "htmlwidget")
     expect_rds_generation(to_rmd(widget))
   })
+
+  it("htmlwidget objects for non-HTML outputs are converted to image capture chunks", {
+    widget <- structure(list(x = 1), class = "htmlwidget")
+    result <- to_rmd(widget, output_format = "pdf_document")
+
+    testthat::expect_match(result, "\\._?_?widget <- readRDS")
+    testthat::expect_match(result, "teal[.]reporter:::[.]capture_htmlwidget_png")
+    testthat::expect_match(result, "knitr::include_graphics")
+  })
 })
 
 testthat::describe("to_rmd declaration", {

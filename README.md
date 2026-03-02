@@ -58,6 +58,33 @@ Previewer Editor
 
 ![Editor Showcase](https://github.com/insightsengineering/teal.reporter/blob/main/assets/img/editor_showcase.gif)
 
+## Htmlwidget capture in PDF/Word/PPT
+
+Interactive htmlwidgets (for example `plotly`) are preserved in HTML preview/output,
+but non-HTML formats (PDF/Word/PowerPoint) require image capture.
+
+`teal.reporter` supports backend-based capture for non-HTML outputs via:
+
+```r
+# install.packages(c("htmlwidgets", "pagedown", "webshot2"))
+
+# choose backend: "auto", "pagedown", "webshot2", or "chromote"
+options(teal.reporter.widget_capture_backend = "auto")
+
+report <- teal.reporter::teal_report()
+report <- within(report, {
+	plotly::plot_ly(mtcars, x = ~wt, y = ~mpg, type = "scatter", mode = "markers")
+})
+
+teal.reporter::render(
+	input = report,
+	output_format = rmarkdown::pdf_document(),
+	output_dir = tempdir()
+)
+```
+
+For reproducibility in CI or servers, ensure a Chromium-capable environment is available.
+
 ## Getting help
 
 If you encounter a bug or have a feature request, please file an issue. For questions, discussions, and staying up to date, please use the `teal` channel in the [`pharmaverse` slack workspace](https://pharmaverse.slack.com).

@@ -25,6 +25,98 @@
   )
 }
 
+.capture_htmlwidget_png <- function(widget, width, height, backend = getOption("teal.reporter.widget_capture_backend", "auto")) {
+  checkmate::assert_class(widget, "htmlwidget")
+  checkmate::assert_int(width, lower = 1)
+  checkmate::assert_int(height, lower = 1)
+  checkmate::assert_string(backend)
+
+  if (!requireNamespace("htmlwidgets", quietly = TRUE)) {
+    stop("Package 'htmlwidgets' is required to capture htmlwidget outputs.")
+  }
+
+  tmp_html <- tempfile(fileext = ".html")
+  tmp_png <- tempfile(fileext = ".png")
+  htmlwidgets::saveWidget(widget = widget, file = tmp_html, selfcontained = TRUE)
+
+  backend <- tolower(backend)
+  available <- c(
+    pagedown = requireNamespace("pagedown", quietly = TRUE),
+    webshot2 = requireNamespace("webshot2", quietly = TRUE),
+    chromote = requireNamespace("webshot2", quietly = TRUE)
+  )
+
+  selected_backend <- if (backend == "auto") {
+    names(available)[which(available)[1]]
+  } else {
+    backend
+  }
+
+  if (is.na(selected_backend) || !selected_backend %in% names(available) || !available[[selected_backend]]) {
+    stop(
+      paste0(
+        "Could not capture htmlwidget for non-HTML output. ",
+        "Install one of: pagedown or webshot2; ",
+        "then set options(teal.reporter.widget_capture_backend = 'pagedown'|'webshot2'|'chromote'|'auto')."
+      )
+    )
+  }
+
+  if (identical(selected_backend, "pagedown")) {
+    pagedown::chrome_print(
+      input = tmp_html,
+      output = tmp_png,
+      wait = 0.2
+    )
+  } else {
+    webshot2::webshot(
+      url = tmp_html,
+      file = tmp_png,
+      vwidth = width,
+      vheight = height,
+      delay = 0.2,
+      zoom = 1
+    )
+  }
+
+  tmp_png
+}
+
+.widget_to_rmd <- function(block, folder_path = ".", output_format = NULL, ...) {
+  is_html_output <- is.null(output_format) || startsWith(output_format, "html")
+  if (is_html_output) {
+    return(.content_to_rmd(block, folder_path = folder_path, ...))
+  }
+
+  tempfile <- tempfile(pattern = "report_item_", fileext = ".rds")
+  path <- file.path(folder_path, basename(tempfile))
+  suppressWarnings(saveRDS(block, file = path))
+  dims <- .determine_default_dimensions(block, convert_to_inches = TRUE)
+  pixel_dims <- .determine_default_dimensions(block, convert_to_inches = FALSE)
+  backend <- getOption("teal.reporter.widget_capture_backend", "auto")
+
+  sprintf(
+    paste0(
+      "```{r echo = FALSE, eval = TRUE, fig.width = %f, fig.height = %f}\n",
+      ".__widget <- readRDS('%s')\n",
+      ".__widget_png <- teal.reporter:::.capture_htmlwidget_png(\n",
+      "  widget = .__widget,\n",
+      "  width = %d,\n",
+      "  height = %d,\n",
+      "  backend = %s\n",
+      ")\n",
+      "knitr::include_graphics(.__widget_png)\n",
+      "```"
+    ),
+    dims$width,
+    dims$height,
+    path,
+    pixel_dims$width,
+    pixel_dims$height,
+    shQuote(backend)
+  )
+}
+
 #' Convert `ReporterCard`/`teal_card` content to `rmarkdown`
 #'
 #' This is an S3 generic that is used to generate content in `rmarkdown` format
@@ -223,7 +315,7 @@ to_rmd.default <- function(block, ...) {
 
 #' @method .to_rmd htmlwidget
 #' @keywords internal
-.to_rmd.htmlwidget <- .content_to_rmd
+.to_rmd.htmlwidget <- .widget_to_rmd
 
 #' @method .to_rmd summary.lm
 #' @keywords internal
