@@ -68,7 +68,7 @@ but non-HTML formats (PDF/Word/PowerPoint) require image capture.
 ```r
 # install.packages(c("htmlwidgets", "pagedown", "webshot2"))
 
-# choose backend: "auto", "pagedown", "webshot2", or "chromote"
+# choose backend: "auto", "pagedown", or "webshot2"
 options(teal.reporter.widget_capture_backend = "auto")
 
 report <- teal.reporter::teal_report()

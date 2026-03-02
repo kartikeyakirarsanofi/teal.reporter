@@ -12,7 +12,6 @@ create_test_reporter <- function(n_cards = 2) {
 
 start_reporter_preview_app <- function(name) {
   skip_if_too_deep(5)
-  testthat::skip_if_not_installed("chromote")
 
   reporter <- create_test_reporter(2)
 

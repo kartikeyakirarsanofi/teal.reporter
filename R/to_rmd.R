@@ -44,8 +44,7 @@
   height <- as.integer(height)
   available <- c(
     pagedown = requireNamespace("pagedown", quietly = TRUE),
-    webshot2 = requireNamespace("webshot2", quietly = TRUE),
-    chromote = requireNamespace("chromote", quietly = TRUE)
+    webshot2 = requireNamespace("webshot2", quietly = TRUE)
   )
 
   selected_backend <- if (backend == "auto") {
@@ -60,7 +59,7 @@
       paste0(
         "Could not capture htmlwidget for non-HTML output. ",
         "Install one of: pagedown or webshot2; ",
-        "then set options(teal.reporter.widget_capture_backend = 'pagedown'|'webshot2'|'chromote'|'auto')."
+        "then set options(teal.reporter.widget_capture_backend = 'pagedown'|'webshot2'|'auto')."
       )
     )
   }
@@ -82,27 +81,6 @@
       delay = 0.2,
       zoom = 1
     )
-  } else {
-    browser <- chromote::ChromoteSession$new()
-    on.exit(try(browser$close(), silent = TRUE), add = TRUE)
-
-    browser$Page$navigate(url = tmp_url, wait_ = TRUE)
-    browser$Page$loadEventFired(wait_ = TRUE)
-    browser$Emulation$setDeviceMetricsOverride(
-      width = width,
-      height = height,
-      deviceScaleFactor = 1,
-      mobile = FALSE,
-      wait_ = TRUE
-    )
-    browser$Runtime$evaluate("document.body.style.margin = '0';", wait_ = TRUE)
-    screenshot <- browser$Page$captureScreenshot(
-      format = "png",
-      fromSurface = TRUE,
-      clip = list(x = 0, y = 0, width = width, height = height, scale = 1),
-      wait_ = TRUE
-    )
-    writeBin(jsonlite::base64_dec(screenshot$data), tmp_png)
   }
 
   tmp_png
