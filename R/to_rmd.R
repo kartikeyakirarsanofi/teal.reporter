@@ -25,6 +25,62 @@
   )
 }
 
+.ensure_webshot_phantomjs <- function() {
+  if (!requireNamespace("webshot", quietly = TRUE)) {
+    stop("Package 'webshot' is required to capture htmlwidget outputs.")
+  }
+
+  if (isTRUE(webshot::is_phantomjs_installed())) {
+    return(invisible(NULL))
+  }
+
+  old_download_method <- getOption("download.file.method")
+  old_curl_ca_bundle <- Sys.getenv("CURL_CA_BUNDLE", unset = NA_character_)
+  old_ssl_cert_file <- Sys.getenv("SSL_CERT_FILE", unset = NA_character_)
+
+  on.exit(options(download.file.method = old_download_method), add = TRUE)
+  on.exit(
+    {
+      if (is.na(old_curl_ca_bundle)) {
+        Sys.unsetenv("CURL_CA_BUNDLE")
+      } else {
+        Sys.setenv(CURL_CA_BUNDLE = old_curl_ca_bundle)
+      }
+      if (is.na(old_ssl_cert_file)) {
+        Sys.unsetenv("SSL_CERT_FILE")
+      } else {
+        Sys.setenv(SSL_CERT_FILE = old_ssl_cert_file)
+      }
+    },
+    add = TRUE
+  )
+
+  options(download.file.method = "libcurl")
+  Sys.setenv(
+    CURL_CA_BUNDLE = "/etc/ssl/certs/ca-certificates.crt",
+    SSL_CERT_FILE = "/etc/ssl/certs/ca-certificates.crt"
+  )
+
+  webshot::install_phantomjs(force = TRUE)
+
+  if (!isTRUE(webshot::is_phantomjs_installed())) {
+    stop("PhantomJS installation failed. Please verify network and SSL certificate settings.")
+  }
+
+  invisible(NULL)
+}
+
+.to_file_url <- function(path) {
+  normalized_path <- normalizePath(path, winslash = "/", mustWork = TRUE)
+  encoded_path <- utils::URLencode(normalized_path, reserved = TRUE)
+
+  if (grepl("^[A-Za-z]:/", encoded_path)) {
+    return(paste0("file:///", encoded_path))
+  }
+
+  paste0("file://", encoded_path)
+}
+
 .capture_htmlwidget_png <- function(widget, width, height, backend = getOption("teal.reporter.widget_capture_backend", "webshot")) {
   checkmate::assert_class(widget, "htmlwidget")
   checkmate::assert_integerish(width, len = 1, lower = 1)
@@ -35,80 +91,29 @@
     stop("Package 'htmlwidgets' is required to capture htmlwidget outputs.")
   }
 
-  chrome_available <- any(nzchar(Sys.which(c("google-chrome", "chromium-browser", "chromium", "chrome"))))
+  backend <- tolower(backend)
+  if (!identical(backend, "webshot")) {
+    warning("Only backend = 'webshot' is supported. Falling back to 'webshot'.")
+  }
+
+  .ensure_webshot_phantomjs()
 
   tmp_html <- tempfile(fileext = ".html")
   tmp_png <- tempfile(tmpdir = getwd(), fileext = ".png")
   htmlwidgets::saveWidget(widget = widget, file = tmp_html, selfcontained = TRUE)
 
-  backend <- tolower(backend)
   width <- as.integer(width)
   height <- as.integer(height)
-  available <- c(
-    webshot = requireNamespace("webshot", quietly = TRUE),
-    pagedown = requireNamespace("pagedown", quietly = TRUE),
-    webshot2 = requireNamespace("webshot2", quietly = TRUE)
+  tmp_url <- .to_file_url(tmp_html)
+
+  webshot::webshot(
+    url = tmp_url,
+    file = tmp_png,
+    vwidth = width,
+    vheight = height,
+    delay = 0.2,
+    zoom = 1
   )
-
-  selected_backend <- if (backend == "auto") {
-    available_backends <- c(
-      if (available[["webshot"]]) "webshot",
-      if (chrome_available && available[["pagedown"]]) "pagedown",
-      if (chrome_available && available[["webshot2"]]) "webshot2"
-    )
-    if (length(available_backends) > 0) available_backends[[1]] else NA_character_
-  } else {
-    backend
-  }
-
-  if (is.na(selected_backend) || !selected_backend %in% names(available) || !available[[selected_backend]]) {
-    stop(
-      paste0(
-        "Could not capture htmlwidget for non-HTML output. ",
-        "Install and configure one of: webshot (with PhantomJS), pagedown, or webshot2. ",
-        "For systems without Chrome/Chromium, use webshot::install_phantomjs() and set ",
-        "options(teal.reporter.widget_capture_backend = 'webshot')."
-      )
-    )
-  }
-
-  if (selected_backend %in% c("pagedown", "webshot2") && !chrome_available) {
-    stop(
-      paste0(
-        "Backend '", selected_backend, "' requires Chrome/Chromium, but none was found. ",
-        "Use options(teal.reporter.widget_capture_backend = 'webshot') and ensure PhantomJS is installed ",
-        "via webshot::install_phantomjs()."
-      )
-    )
-  }
-
-  tmp_url <- paste0("file://", normalizePath(tmp_html, winslash = "/", mustWork = TRUE))
-
-  if (identical(selected_backend, "webshot")) {
-    webshot::webshot(
-      url = tmp_url,
-      file = tmp_png,
-      vwidth = width,
-      vheight = height,
-      delay = 0.2,
-      zoom = 1
-    )
-  } else if (identical(selected_backend, "pagedown")) {
-    pagedown::chrome_print(
-      input = tmp_url,
-      output = tmp_png,
-      wait = 0.2
-    )
-  } else if (identical(selected_backend, "webshot2")) {
-    webshot2::webshot(
-      url = tmp_url,
-      file = tmp_png,
-      vwidth = width,
-      vheight = height,
-      delay = 0.2,
-      zoom = 1
-    )
-  }
 
   if (!file.exists(tmp_png)) {
     stop(
@@ -134,7 +139,7 @@
   suppressWarnings(saveRDS(block, file = path))
   dims <- .determine_default_dimensions(block, convert_to_inches = TRUE)
   pixel_dims <- .determine_default_dimensions(block, convert_to_inches = FALSE)
-  backend <- getOption("teal.reporter.widget_capture_backend", "auto")
+  backend <- getOption("teal.reporter.widget_capture_backend", "webshot")
 
   sprintf(
     paste0(

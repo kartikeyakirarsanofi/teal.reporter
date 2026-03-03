@@ -63,15 +63,19 @@ Previewer Editor
 Interactive htmlwidgets (for example `plotly`) are preserved in HTML preview/output,
 but non-HTML formats (PDF/Word/PowerPoint) require image capture.
 
-`teal.reporter` supports backend-based capture for non-HTML outputs via:
+`teal.reporter` supports `webshot` capture for non-HTML outputs:
 
 ```r
 # install.packages(c("htmlwidgets", "webshot"))
 
-# for systems without Chrome/Chromium, install PhantomJS once:
-# webshot::install_phantomjs()
+options(download.file.method = "libcurl")
+Sys.setenv(
+	CURL_CA_BUNDLE = "/etc/ssl/certs/ca-certificates.crt",
+	SSL_CERT_FILE = "/etc/ssl/certs/ca-certificates.crt"
+)
 
-# choose backend: "webshot", "auto", "pagedown", or "webshot2"
+webshot::install_phantomjs(force = TRUE)
+
 options(teal.reporter.widget_capture_backend = "webshot")
 
 report <- teal.reporter::teal_report()
@@ -86,7 +90,7 @@ teal.reporter::render(
 )
 ```
 
-For reproducibility in CI or servers, ensure a Chromium-capable environment is available.
+For reproducibility in CI or servers, ensure PhantomJS can be installed and executed.
 
 ## Getting help
 
