@@ -106,6 +106,20 @@
   height <- as.integer(height)
   tmp_url <- .to_file_url(tmp_html)
 
+  old_openssl_conf <- Sys.getenv("OPENSSL_CONF", unset = NA_character_)
+  on.exit(
+    {
+      if (is.na(old_openssl_conf)) {
+        Sys.unsetenv("OPENSSL_CONF")
+      } else {
+        Sys.setenv(OPENSSL_CONF = old_openssl_conf)
+      }
+    },
+    add = TRUE
+  )
+
+  Sys.setenv(OPENSSL_CONF = "/dev/null")
+
   webshot::webshot(
     url = tmp_url,
     file = tmp_png,
