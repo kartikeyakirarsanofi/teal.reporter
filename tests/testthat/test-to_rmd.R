@@ -96,6 +96,29 @@ testthat::describe("to_rmd generating blocks with rds auxiliary files", {
     testthat::expect_match(result, "teal[.]reporter:::[.]capture_htmlwidget_png")
     testthat::expect_match(result, "knitr::include_graphics")
   })
+
+  it("gt_tbl objects are converted to HTML save/include chunks", {
+    testthat::skip_if_not_installed("gt")
+    gt_tbl <- gt::gt(head(iris))
+    result <- to_rmd(gt_tbl)
+
+    testthat::expect_match(result, "gt::as_raw_html")
+    testthat::expect_match(result, "htmltools::save_html")
+    testthat::expect_match(result, "htmltools::includeHTML")
+  })
+})
+
+testthat::describe("to_rmd htmlwidget capture helpers", {
+  it("injects echarts static script into html", {
+    tmp_html <- tempfile(fileext = ".html")
+    writeLines(c("<html>", "<body>", "<div id='app'></div>", "</body>", "</html>"), tmp_html)
+
+    teal.reporter:::.inject_echarts_static_script(tmp_html)
+    content <- paste(readLines(tmp_html, warn = FALSE), collapse = "\n")
+
+    testthat::expect_match(content, "teal-reporter-echarts-static")
+    testthat::expect_match(content, "getDataURL")
+  })
 })
 
 testthat::describe("to_rmd declaration", {

@@ -65,6 +65,10 @@ but non-HTML formats (PDF/Word/PowerPoint) require image capture.
 
 `teal.reporter` supports `webshot` capture for non-HTML outputs:
 
+- `girafe`/other `htmlwidget` objects are captured as static PNGs for PDF/Word/PowerPoint.
+- `echarts4r` widgets are converted via injected JavaScript to a static PNG before capture,
+  which avoids blank screenshots with PhantomJS.
+
 ```r
 # install.packages(c("htmlwidgets", "webshot"))
 

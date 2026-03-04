@@ -81,6 +81,73 @@
   paste0("file://", encoded_path)
 }
 
+.inject_echarts_static_script <- function(path) {
+  checkmate::assert_file_exists(path)
+
+  html <- readLines(path, warn = FALSE, encoding = "UTF-8")
+  script <- c(
+    "<script>",
+    "(function() {",
+    "  function renderStaticEcharts() {",
+    "    if (typeof echarts === 'undefined') {",
+    "      return false;",
+    "    }",
+    "",
+    "    var nodes = document.querySelectorAll('*');",
+    "    for (var i = 0; i < nodes.length; i++) {",
+    "      var instance = echarts.getInstanceByDom(nodes[i]);",
+    "      if (!instance) {",
+    "        continue;",
+    "      }",
+    "",
+    "      var dataUrl = instance.getDataURL({",
+    "        type: 'png',",
+    "        pixelRatio: 2,",
+    "        backgroundColor: '#ffffff'",
+    "      });",
+    "",
+    "      var img = document.createElement('img');",
+    "      img.src = dataUrl;",
+    "      img.style.width = '100%';",
+    "      img.style.height = 'auto';",
+    "",
+    "      var container = document.createElement('div');",
+    "      container.id = 'teal-reporter-echarts-static';",
+    "      container.style.width = '100%';",
+    "      container.appendChild(img);",
+    "",
+    "      document.body.innerHTML = '';",
+    "      document.body.appendChild(container);",
+    "      return true;",
+    "    }",
+    "",
+    "    return false;",
+    "  }",
+    "",
+    "  var tries = 0;",
+    "  var maxTries = 60;",
+    "  var timer = setInterval(function() {",
+    "    tries += 1;",
+    "    if (renderStaticEcharts() || tries >= maxTries) {",
+    "      clearInterval(timer);",
+    "    }",
+    "  }, 100);",
+    "})();",
+    "</script>"
+  )
+
+  body_close <- grep("</body>", html, ignore.case = TRUE)
+  if (length(body_close)) {
+    index <- body_close[[1]]
+    html <- append(html, values = script, after = index - 1L)
+  } else {
+    html <- c(html, script)
+  }
+
+  writeLines(html, con = path, useBytes = TRUE)
+  invisible(NULL)
+}
+
 .capture_htmlwidget_png <- function(widget, width, height, backend = getOption("teal.reporter.widget_capture_backend", "webshot")) {
   checkmate::assert_class(widget, "htmlwidget")
   checkmate::assert_integerish(width, len = 1, lower = 1)
@@ -102,9 +169,14 @@
   tmp_png <- tempfile(tmpdir = getwd(), fileext = ".png")
   htmlwidgets::saveWidget(widget = widget, file = tmp_html, selfcontained = TRUE)
 
+  if (inherits(widget, "echarts4r")) {
+    .inject_echarts_static_script(tmp_html)
+  }
+
   width <- as.integer(width)
   height <- as.integer(height)
   tmp_url <- .to_file_url(tmp_html)
+  capture_delay <- if (inherits(widget, "girafe") || inherits(widget, "echarts4r")) 1 else 0.2
 
   old_openssl_conf <- Sys.getenv("OPENSSL_CONF", unset = NA_character_)
   on.exit(
@@ -125,7 +197,7 @@
     file = tmp_png,
     vwidth = width,
     vheight = height,
-    delay = 0.2,
+    delay = capture_delay,
     zoom = 1
   )
 
@@ -393,6 +465,42 @@ to_rmd.default <- function(block, ...) {
 #' @method .to_rmd flextable
 #' @keywords internal
 .to_rmd.flextable <- .content_to_rmd
+
+#' @method .to_rmd gt_tbl
+#' @keywords internal
+.to_rmd.gt_tbl <- function(block, folder_path = ".", ...) {
+  tempfile <- tempfile(pattern = "report_item_", fileext = ".rds")
+  path <- file.path(folder_path, basename(tempfile))
+  html_file <- file.path(
+    folder_path,
+    sprintf("%s.html", tools::file_path_sans_ext(basename(tempfile)))
+  )
+  suppressWarnings(saveRDS(block, file = path))
+
+  sprintf(
+    paste0(
+      "```{r echo = FALSE, eval = TRUE}\n",
+      ".__gt_obj <- readRDS('%s')\n",
+      "if (inherits(.__gt_obj, 'gt_tbl')) {\n",
+      "  html <- gt::as_raw_html(.__gt_obj, inline_css = TRUE)\n",
+      "  htmltools::save_html(\n",
+      "    htmltools::tags$html(\n",
+      "      htmltools::tags$head(htmltools::tags$title('gt table')),\n",
+      "      htmltools::tags$body(htmltools::HTML(html))\n",
+      "    ),\n",
+      "    file = '%s'\n",
+      "  )\n",
+      "  htmltools::includeHTML('%s')\n",
+      "} else {\n",
+      "  .__gt_obj\n",
+      "}\n",
+      "```"
+    ),
+    path,
+    html_file,
+    html_file
+  )
+}
 
 #' @method .to_rmd TableTree
 #' @keywords internal
