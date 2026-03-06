@@ -124,7 +124,46 @@ toHTML.default <- function(x, ...) {
 
 #' @method .toHTML htmlwidget
 #' @keywords internal
+.static_widget_preview_disclaimer <- function(x) {
+  if (inherits(x, "girafe")) {
+    return(shiny::tags$div(
+      class = "alert alert-warning",
+      shiny::tags$strong("Static reporting note:"),
+      shiny::tags$p(
+        "This ggiraph widget is interactive in preview, but interactive behavior and rendering are not guaranteed in PDF/Word/PowerPoint exports.",
+        style = "margin-bottom: 0.35rem;"
+      ),
+      shiny::tags$p(
+        "For static reports, include a ggplot object or a pre-rendered image.",
+        style = "margin-bottom: 0;"
+      )
+    ))
+  }
+
+  if (inherits(x, "echarts4r")) {
+    return(shiny::tags$div(
+      class = "alert alert-warning",
+      shiny::tags$strong("Static reporting note:"),
+      shiny::tags$p(
+        "This echarts4r widget is interactive in preview, but static export to PDF/Word/PowerPoint may not reproduce it reliably.",
+        style = "margin-bottom: 0.35rem;"
+      ),
+      shiny::tags$p(
+        "For static reports, include a ggplot object or a pre-rendered image.",
+        style = "margin-bottom: 0;"
+      )
+    ))
+  }
+
+  NULL
+}
+
 .toHTML.htmlwidget <- function(x, ...) {
+  disclaimer <- .static_widget_preview_disclaimer(x)
+  if (!is.null(disclaimer)) {
+    return(shiny::tagList(disclaimer, x))
+  }
+
   x
 }
 

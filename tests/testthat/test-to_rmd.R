@@ -97,14 +97,22 @@ testthat::describe("to_rmd generating blocks with rds auxiliary files", {
     testthat::expect_match(result, "knitr::include_graphics")
   })
 
-  it("gt_tbl objects are converted to HTML save/include chunks", {
+  it("gt_tbl objects are converted to HTML chunks for HTML output", {
     testthat::skip_if_not_installed("gt")
     gt_tbl <- gt::gt(head(iris))
     result <- to_rmd(gt_tbl)
 
     testthat::expect_match(result, "gt::as_raw_html")
-    testthat::expect_match(result, "htmltools::save_html")
-    testthat::expect_match(result, "htmltools::includeHTML")
+    testthat::expect_no_match(result, "include_graphics")
+  })
+
+  it("gt_tbl objects are converted to static image capture chunks for PDF", {
+    testthat::skip_if_not_installed("gt")
+    gt_tbl <- gt::gt(head(iris))
+    result <- to_rmd(gt_tbl, output_format = "pdf_document")
+
+    testthat::expect_match(result, "teal[.]reporter:::[.]capture_gt_png")
+    testthat::expect_match(result, "knitr::include_graphics")
   })
 })
 

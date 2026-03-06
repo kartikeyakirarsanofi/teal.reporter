@@ -28,6 +28,26 @@ testthat::describe("toHTML generates image tags", {
     result <- toHTML(widget)
     testthat::expect_identical(result, htmltools::browsable(widget))
   })
+
+  it("adds preview disclaimer for girafe widgets", {
+    widget <- structure(list(x = 1), class = c("girafe", "htmlwidget"))
+    result <- toHTML(widget)
+    html <- as.character(result)
+
+    testthat::expect_match(html, "Static reporting note")
+    testthat::expect_match(html, "ggiraph")
+    testthat::expect_match(html, "static reports")
+  })
+
+  it("adds preview disclaimer for echarts4r widgets", {
+    widget <- structure(list(x = 1), class = c("echarts4r", "htmlwidget"))
+    result <- toHTML(widget)
+    html <- as.character(result)
+
+    testthat::expect_match(html, "Static reporting note")
+    testthat::expect_match(html, "echarts4r")
+    testthat::expect_match(html, "static reports")
+  })
 })
 
 testthat::describe("toHTML generates", {

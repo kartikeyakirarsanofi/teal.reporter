@@ -1,28 +1,117 @@
-.content_to_rmd <- function(block, folder_path = ".", ...) {
-  tempfile <- tempfile(pattern = "report_item_", fileext = ".rds")
-  path <- file.path(folder_path, basename(tempfile))
+.save_block_rds <- function(block, folder_path = ".") {
+  checkmate::assert_directory_exists(folder_path)
+
+  tmp_file <- tempfile(pattern = "report_item_", fileext = ".rds")
+  path <- file.path(folder_path, basename(tmp_file))
   suppressWarnings(saveRDS(block, file = path))
-  sprintf("```{r echo = FALSE, eval = TRUE}\nreadRDS('%s')\n```", path)
+  path
 }
 
-.plot_to_rmd <- function(block, folder_path = ".", ...) {
-  tempfile <- tempfile(pattern = "report_item_", fileext = ".rds")
-  path <- file.path(folder_path, basename(tempfile))
-  suppressWarnings(saveRDS(block, file = path))
-  dims <- .determine_default_dimensions(block, convert_to_inches = TRUE)
+.is_html_output <- function(output_format) {
+  is.null(output_format) || startsWith(output_format, "html")
+}
 
-  chunk <- if (inherits(block, "grob")) {
-    "```{r echo = FALSE, eval = TRUE, fig.width = %f, fig.height = %f}\n._figure <- readRDS('%s')\ngrid::grid.newpage()\ngrid::grid.draw(._figure)\n```" # nolint line_length_linter.
-  } else {
-    "```{r echo = FALSE, eval = TRUE, fig.width = %f, fig.height = %f}\nreadRDS('%s')\n```"
+.is_static_office_output <- function(output_format) {
+  !.is_html_output(output_format) &&
+    output_format %in% c("pdf_document", "word_document", "powerpoint_presentation")
+}
+
+.resolve_rmd_layout <- function(block, output_format = NULL) {
+  pixel_dims <- .determine_default_dimensions(block, convert_to_inches = FALSE)
+  inch_dims <- .determine_default_dimensions(block, convert_to_inches = TRUE)
+
+  max_dims <- switch(output_format,
+    pdf_document = list(width = 6.5, height = 8),
+    word_document = list(width = 6.5, height = 8),
+    powerpoint_presentation = list(width = 9, height = 5),
+    list(width = inch_dims$width, height = inch_dims$height)
+  )
+
+  width_scale <- max_dims$width / inch_dims$width
+  height_scale <- max_dims$height / inch_dims$height
+  scale <- min(1, width_scale, height_scale)
+
+  fig_width <- inch_dims$width * scale
+  fig_height <- inch_dims$height * scale
+
+  list(
+    fig_width = fig_width,
+    fig_height = fig_height,
+    pixel_width = max(1L, as.integer(round(pixel_dims$width * scale))),
+    pixel_height = max(1L, as.integer(round(pixel_dims$height * scale))),
+    out_width = sprintf("%.2fin", fig_width),
+    static_office_output = .is_static_office_output(output_format)
+  )
+}
+
+.expand_wide_capture <- function(width, height, min_wide_width = 1600, wide_ratio = 1.6) {
+  checkmate::assert_integerish(width, len = 1, lower = 1)
+  checkmate::assert_integerish(height, len = 1, lower = 1)
+
+  width <- as.integer(width)
+  height <- as.integer(height)
+  ratio <- width / max(1, height)
+
+  if (ratio >= wide_ratio && width < min_wide_width) {
+    scale <- min_wide_width / width
+    width <- as.integer(round(width * scale))
+    height <- as.integer(round(height * scale))
   }
 
+  list(width = width, height = height)
+}
+
+.figure_chunk_options <- function(layout) {
+  opts <- c(
+    "echo = FALSE",
+    "eval = TRUE",
+    sprintf("fig.width = %.6f", layout$fig_width),
+    sprintf("fig.height = %.6f", layout$fig_height),
+    sprintf("out.width = '%s'", layout$out_width),
+    "fig.align = 'center'"
+  )
+
+  paste(opts, collapse = ", ")
+}
+
+.escape_chunk_opts <- function(chunk_opts) {
+  gsub("%", "%%", chunk_opts, fixed = TRUE)
+}
+
+.content_to_rmd <- function(block, folder_path = ".", ...) {
+  path <- .save_block_rds(block, folder_path = folder_path)
   sprintf(
-    chunk,
-    dims$width,
-    dims$height,
+    paste0(
+      "```{r echo = FALSE, eval = TRUE}\n",
+      "readRDS('%s')\n",
+      "```"
+    ),
     path
   )
+}
+
+.plot_to_rmd <- function(block, folder_path = ".", output_format = NULL, ...) {
+  path <- .save_block_rds(block, folder_path = folder_path)
+  layout <- .resolve_rmd_layout(block, output_format = output_format)
+  chunk_opts <- .escape_chunk_opts(.figure_chunk_options(layout))
+
+  chunk <- if (inherits(block, "grob")) {
+    paste0(
+      "```{r ", chunk_opts, "}\n",
+      ".__figure <- readRDS('%s')\n",
+      "grid::grid.newpage()\n",
+      "grid::grid.draw(.__figure)\n",
+      "```"
+    )
+  } else {
+    paste0(
+      "```{r ", chunk_opts, "}\n",
+      "readRDS('%s')\n",
+      "```"
+    )
+  }
+
+  sprintf(chunk, path)
 }
 
 .ensure_webshot_phantomjs <- function() {
@@ -215,21 +304,19 @@
 }
 
 .widget_to_rmd <- function(block, folder_path = ".", output_format = NULL, ...) {
-  is_html_output <- is.null(output_format) || startsWith(output_format, "html")
-  if (is_html_output) {
+  if (.is_html_output(output_format)) {
     return(.content_to_rmd(block, folder_path = folder_path, ...))
   }
 
-  tempfile <- tempfile(pattern = "report_item_", fileext = ".rds")
-  path <- file.path(folder_path, basename(tempfile))
-  suppressWarnings(saveRDS(block, file = path))
-  dims <- .determine_default_dimensions(block, convert_to_inches = TRUE)
-  pixel_dims <- .determine_default_dimensions(block, convert_to_inches = FALSE)
+  path <- .save_block_rds(block, folder_path = folder_path)
+  layout <- .resolve_rmd_layout(block, output_format = output_format)
+  chunk_opts <- .escape_chunk_opts(.figure_chunk_options(layout))
+  capture_dims <- .expand_wide_capture(layout$pixel_width, layout$pixel_height)
   backend <- getOption("teal.reporter.widget_capture_backend", "webshot")
 
   sprintf(
     paste0(
-      "```{r echo = FALSE, eval = TRUE, fig.width = %f, fig.height = %f}\n",
+      "```{r ", chunk_opts, "}\n",
       ".__widget <- readRDS('%s')\n",
       ".__widget_png <- teal.reporter:::.capture_htmlwidget_png(\n",
       "  widget = .__widget,\n",
@@ -241,13 +328,81 @@
       "knitr::include_graphics(.__widget_png)\n",
       "```"
     ),
-    dims$width,
-    dims$height,
     path,
-    pixel_dims$width,
-    pixel_dims$height,
+    capture_dims$width,
+    capture_dims$height,
     shQuote(backend)
   )
+}
+
+.capture_gt_png <- function(table, width, height) {
+  checkmate::assert_class(table, "gt_tbl")
+  checkmate::assert_integerish(width, len = 1, lower = 1)
+  checkmate::assert_integerish(height, len = 1, lower = 1)
+
+  if (!requireNamespace("gt", quietly = TRUE)) {
+    stop("Package 'gt' is required to capture gt outputs.")
+  }
+
+  if (!requireNamespace("htmltools", quietly = TRUE)) {
+    stop("Package 'htmltools' is required to capture gt outputs.")
+  }
+
+  .ensure_webshot_phantomjs()
+
+  tmp_html <- tempfile(fileext = ".html")
+  tmp_png <- tempfile(tmpdir = getwd(), fileext = ".png")
+
+  htmltools::save_html(
+    htmltools::tags$html(
+      htmltools::tags$head(
+        htmltools::tags$style(
+          htmltools::HTML("body { margin: 0; padding: 8px; background: white; }")
+        )
+      ),
+      htmltools::tags$body(
+        htmltools::HTML(gt::as_raw_html(table, inline_css = TRUE))
+      )
+    ),
+    file = tmp_html,
+    background = "white"
+  )
+
+  old_openssl_conf <- Sys.getenv("OPENSSL_CONF", unset = NA_character_)
+  on.exit(
+    {
+      if (is.na(old_openssl_conf)) {
+        Sys.unsetenv("OPENSSL_CONF")
+      } else {
+        Sys.setenv(OPENSSL_CONF = old_openssl_conf)
+      }
+    },
+    add = TRUE
+  )
+
+  Sys.setenv(OPENSSL_CONF = "/dev/null")
+
+  webshot::webshot(
+    url = .to_file_url(tmp_html),
+    file = tmp_png,
+    vwidth = as.integer(width),
+    vheight = as.integer(height),
+    selector = "table",
+    expand = 8,
+    delay = 0.2,
+    zoom = 1
+  )
+
+  if (!file.exists(tmp_png)) {
+    stop(
+      paste(
+        "gt capture did not produce an image file.",
+        "Ensure PhantomJS is installed and webshot is configured."
+      )
+    )
+  }
+
+  tmp_png
 }
 
 #' Convert `ReporterCard`/`teal_card` content to `rmarkdown`
@@ -468,37 +623,40 @@ to_rmd.default <- function(block, ...) {
 
 #' @method .to_rmd gt_tbl
 #' @keywords internal
-.to_rmd.gt_tbl <- function(block, folder_path = ".", ...) {
-  tempfile <- tempfile(pattern = "report_item_", fileext = ".rds")
-  path <- file.path(folder_path, basename(tempfile))
-  html_file <- file.path(
-    folder_path,
-    sprintf("%s.html", tools::file_path_sans_ext(basename(tempfile)))
-  )
-  suppressWarnings(saveRDS(block, file = path))
+.to_rmd.gt_tbl <- function(block, folder_path = ".", output_format = NULL, ...) {
+  path <- .save_block_rds(block, folder_path = folder_path)
+
+  if (.is_html_output(output_format)) {
+    return(sprintf(
+      paste0(
+        "```{r echo = FALSE, eval = TRUE}\n",
+        "htmltools::HTML(gt::as_raw_html(readRDS('%s'), inline_css = TRUE))\n",
+        "```"
+      ),
+      path
+    ))
+  }
+
+  layout <- .resolve_rmd_layout(block, output_format = output_format)
+  chunk_opts <- .escape_chunk_opts(.figure_chunk_options(layout))
+  capture_dims <- .expand_wide_capture(layout$pixel_width, layout$pixel_height, min_wide_width = 2200)
 
   sprintf(
     paste0(
-      "```{r echo = FALSE, eval = TRUE}\n",
+      "```{r ", chunk_opts, "}\n",
       ".__gt_obj <- readRDS('%s')\n",
-      "if (inherits(.__gt_obj, 'gt_tbl')) {\n",
-      "  html <- gt::as_raw_html(.__gt_obj, inline_css = TRUE)\n",
-      "  htmltools::save_html(\n",
-      "    htmltools::tags$html(\n",
-      "      htmltools::tags$head(htmltools::tags$title('gt table')),\n",
-      "      htmltools::tags$body(htmltools::HTML(html))\n",
-      "    ),\n",
-      "    file = '%s'\n",
-      "  )\n",
-      "  htmltools::includeHTML('%s')\n",
-      "} else {\n",
-      "  .__gt_obj\n",
-      "}\n",
+      ".__gt_png <- teal.reporter:::.capture_gt_png(\n",
+      "  table = .__gt_obj,\n",
+      "  width = %d,\n",
+      "  height = %d\n",
+      ")\n",
+      ".__gt_png <- normalizePath(.__gt_png, winslash = '/', mustWork = TRUE)\n",
+      "knitr::include_graphics(.__gt_png)\n",
       "```"
     ),
     path,
-    html_file,
-    html_file
+    capture_dims$width,
+    capture_dims$height
   )
 }
 
